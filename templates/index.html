@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>ระบบสำหรับ Tester</title>
+</head>
+<body>
+    <div class="container">
+        <h1>ระบบสำหรับ Tester</h1>
+
+        <!-- Dropdown for folders -->
+        <select id="folder-select" class="folder-select">
+            {% for folder in folders %}
+                <option value="{{ folder }}" {% if folder == default_folder %}selected{% endif %}>{{ folder }}</option>
+            {% endfor %}
+        </select>
+
+        <!-- Table for displaying Python files -->
+        <table>
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Status</th>
+                    <th>Time</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="file-list">
+                {% for file in files %}
+                <tr>
+                    <td>{{ file }}</td>
+                    <td id="status-{{ file }}" class="status-ready">Ready</td>
+                    <td id="time-{{ file }}">-</td>
+                    <td><button class="run-button" onclick="runScript('{{ file }}', '{{ default_folder }}')">Run</button></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Result textarea -->
+        <textarea id="result" rows="10" cols="50" class="result-textarea" placeholder="Result will appear here..." readonly></textarea>
+    </div>
+
+    <script>
+        document.getElementById('folder-select').addEventListener('change', function() {
+            const selectedFolder = this.value;
+            fetch(`/files/${selectedFolder}`)
+                .then(response => response.json())
+                .then(files => {
+                    const fileList = document.getElementById('file-list');
+                    fileList.innerHTML = ''; // Clear current file list
+                    files.forEach(file => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td>${file}</td><td id="status-${file}" class="status-ready">Ready</td><td id="time-${file}">-</td><td><button class="run-button" onclick="runScript('${file}', '${selectedFolder}')">Run</button></td>`;
+                        fileList.appendChild(row);
+                    });
+                });
+        });
+
+        function runScript(filename, folder) {
+            const statusCell = document.getElementById(`status-${filename}`);
+            const timeCell = document.getElementById(`time-${filename}`);
+            const resultTextarea = document.getElementById('result');
+
+            // Update status to 'In Process' and reset time
+            statusCell.innerText = 'In Process';
+            statusCell.className = ''; // Clear existing classes
+            statusCell.classList.add('status-in-process'); // Set class for 'In Process'
+            timeCell.innerText = '0s';
+
+            let startTime = Date.now();
+            let elapsedTime = 0;
+
+            const intervalId = setInterval(() => {
+                elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+                timeCell.innerText = `${elapsedTime}s`;
+            }, 1000);
+
+            fetch(`/run/${filename}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ folder: folder })
+            })
+            .then(response => response.json())
+            .then(data => {
+                clearInterval(intervalId);
+                statusCell.innerText = data.status;
+
+                // Update status color based on status
+                updateStatusColor(statusCell, data.status);
+                
+                // Update final time
+                elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+                timeCell.innerText = `${elapsedTime}s`;
+
+                // Display the result
+                resultTextarea.value = data.result;
+            });
+        }
+
+        function updateStatusColor(cell, status) {
+            cell.className = ''; // Clear existing status classes
+            switch (status.toLowerCase()) {
+                case 'ready':
+                    cell.classList.add('status-ready');
+                    break;
+                case 'in process':
+                    cell.classList.add('status-in-process');
+                    break;
+                case 'pass':
+                    cell.classList.add('status-pass');
+                    break;
+                case 'fail':
+                    cell.classList.add('status-fail');
+                    break;
+                default:
+                    cell.classList.add('status-ready');
+            }
+        }
+    </script>
+</body>
+</html>
